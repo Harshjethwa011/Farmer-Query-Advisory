@@ -1,0 +1,15 @@
+node_modules/
+client/dist/
+server/uploads/*
+!server/uploads/.gitkeep
+server/.test-mongodb-e2e/
+.env
+server/.env
+client/.env
+.env.*
+!*.env.example
+server/.env.*
+!server/.env.example
+client/.env.*
+!client/.env.example
+*.log

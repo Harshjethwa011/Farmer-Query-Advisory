@@ -1,0 +1,30 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import mongoose from 'mongoose';
+import authRoutes from './routes/authRoutes.js';
+import queryRoutes from './routes/queryRoutes.js';
+import cropRoutes from './routes/cropRoutes.js';
+import diseaseRoutes from './routes/diseaseRoutes.js';
+import weatherRoutes from './routes/weatherRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import { errorHandler, notFound } from './middleware/errorHandler.js';
+
+const app = express();
+app.use(helmet());
+app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
+app.use(express.json({ limit: '1mb' }));
+app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, limit: 150, standardHeaders: true, legacyHeaders: false }));
+app.get('/api/health', (_req, res) => res.json({ status: 'ok', database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' }));
+app.use('/api/auth', authRoutes);
+app.use('/api/queries', queryRoutes);
+app.use('/api/crops', cropRoutes);
+app.use('/api/disease', diseaseRoutes);
+app.use('/api/diseases', diseaseRoutes);
+app.use('/api/weather', weatherRoutes);
+app.use('/api/admin', adminRoutes);
+app.use(notFound);
+app.use(errorHandler);
+
+export default app;

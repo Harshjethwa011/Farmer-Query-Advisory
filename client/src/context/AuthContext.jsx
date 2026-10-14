@@ -1,0 +1,4 @@
+import { createContext, useContext, useEffect, useState } from 'react'; import api from '../services/api';
+const AuthContext = createContext(null);
+export function AuthProvider({ children }) { const [user, setUser] = useState(null); const [loading, setLoading] = useState(true); useEffect(() => { if (!localStorage.getItem('farmer_token')) { setLoading(false); return; } api.get('/auth/me').then(({ data }) => setUser(data.user)).catch((error) => { if (error.response?.status === 401) localStorage.removeItem('farmer_token'); }).finally(() => setLoading(false)); }, []); const accept = (data) => { localStorage.setItem('farmer_token', data.token); setUser(data.user); }; const logout = () => { localStorage.removeItem('farmer_token'); setUser(null); }; return <AuthContext.Provider value={{ user, setUser, loading, accept, logout }}>{children}</AuthContext.Provider>; }
+export const useAuth = () => useContext(AuthContext);
