@@ -17,7 +17,18 @@ export async function login(req, res, next) { try {
   if (typeof email !== 'string' || !isValidEmail(email) || typeof password !== 'string' || !password) return res.status(400).json({ message: 'A valid email and password are required.' });
   if (!isJwtConfigured()) return res.status(503).json({ message: 'Authentication is not configured on this server.' });
   const user = await User.findOne({ email: email.trim().toLowerCase() }).select('+password');
-  if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: 'Email or password is incorrect.' });
+  const passwordHashAvailable = Boolean(user?.password);
+  const passwordComparisonSucceeded = user && passwordHashAvailable
+    ? await bcrypt.compare(password, user.password)
+    : false;
+  if (process.env.AUTH_LOGIN_DIAGNOSTICS === 'true') {
+    console.info('[auth-login-diagnostic]', JSON.stringify({
+      userFound: Boolean(user),
+      passwordHashAvailable,
+      passwordComparisonSucceeded,
+    }));
+  }
+  if (!user || !passwordComparisonSucceeded) return res.status(401).json({ message: 'Email or password is incorrect.' });
   res.json({ token: makeToken(user), user: publicUser(user) });
 } catch (e) { next(e); } }
 export function me(req, res) { res.json({ user: publicUser(req.user) }); }

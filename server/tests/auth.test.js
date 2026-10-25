@@ -54,12 +54,45 @@ test('duplicate registration returns a conflict without leaking database details
   assert.deepEqual(data, { message: 'An account with this email already exists.' });
 });
 
+test('a password hash created during registration verifies during login', async (t) => {
+  process.env.JWT_SECRET = secret;
+  const temporaryPassword = 'synthetic-test-password';
+  let storedTestUser;
+  let loginFilter;
+  t.mock.method(User, 'create', async (values) => {
+    storedTestUser = { ...farmer, ...values };
+    return storedTestUser;
+  });
+  t.mock.method(User, 'findOne', (filter) => {
+    loginFilter = filter;
+    return { select: async () => storedTestUser };
+  });
+
+  const registration = await withServer(t, '/api/auth/register', {
+    method: 'POST',
+    body: { name: 'Synthetic Test', email: '  SYNTHETIC@EXAMPLE.TEST  ', password: temporaryPassword },
+  });
+  assert.equal(registration.response.status, 201);
+  const login = await withServer(t, '/api/auth/login', {
+    method: 'POST',
+    body: { email: '  Synthetic@Example.Test  ', password: temporaryPassword },
+  });
+
+  assert.equal(login.response.status, 200);
+  assert.deepEqual(loginFilter, { email: 'synthetic@example.test' });
+  assert.equal(storedTestUser.email, 'synthetic@example.test');
+  assert.equal(await bcrypt.compare(temporaryPassword, storedTestUser.password), true);
+  assert.equal(login.data.user.password, undefined);
+});
+
 test('login accepts a correct password and returns a signed token without the hash', async (t) => {
   process.env.JWT_SECRET = secret;
   const password = await bcrypt.hash('safe-password', 4);
-  t.mock.method(User, 'findOne', () => ({ select: async () => ({ ...farmer, password }) }));
+  let filter;
+  t.mock.method(User, 'findOne', (query) => { filter = query; return { select: async () => ({ ...farmer, password }) }; });
   const { response, data } = await withServer(t, '/api/auth/login', { method: 'POST', body: { email: 'FARMER@example.test', password: 'safe-password' } });
   assert.equal(response.status, 200);
+  assert.deepEqual(filter, { email: farmer.email });
   assert.equal(jwt.verify(data.token, secret).id, farmerId);
   assert.equal(data.user.password, undefined);
 });
@@ -71,6 +104,47 @@ test('login rejects an incorrect password', async (t) => {
   const { response, data } = await withServer(t, '/api/auth/login', { method: 'POST', body: { email: farmer.email, password: 'wrong-password' } });
   assert.equal(response.status, 401);
   assert.deepEqual(data, { message: 'Email or password is incorrect.' });
+});
+
+test('login rejects a nonexistent account with the same generic credential error', async (t) => {
+  process.env.JWT_SECRET = secret;
+  let filter;
+  t.mock.method(User, 'findOne', (query) => { filter = query; return { select: async () => null }; });
+  const { response, data } = await withServer(t, '/api/auth/login', { method: 'POST', body: { email: 'MISSING@example.test', password: 'safe-password' } });
+  assert.equal(response.status, 401);
+  assert.deepEqual(data, { message: 'Email or password is incorrect.' });
+  assert.deepEqual(filter, { email: 'missing@example.test' });
+});
+
+test('opt-in login diagnostics emit only the three requested boolean flags', async (t) => {
+  const previousSecret = process.env.JWT_SECRET;
+  const previousDiagnostics = process.env.AUTH_LOGIN_DIAGNOSTICS;
+  process.env.JWT_SECRET = secret;
+  process.env.AUTH_LOGIN_DIAGNOSTICS = 'true';
+  t.after(() => {
+    if (previousSecret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = previousSecret;
+    if (previousDiagnostics === undefined) delete process.env.AUTH_LOGIN_DIAGNOSTICS; else process.env.AUTH_LOGIN_DIAGNOSTICS = previousDiagnostics;
+  });
+  const password = 'synthetic-diagnostic-password';
+  const hash = await bcrypt.hash(password, 4);
+  t.mock.method(User, 'findOne', () => ({ select: async () => ({ ...farmer, password: hash }) }));
+  let diagnostic;
+  t.mock.method(console, 'info', (...args) => { diagnostic = args; });
+
+  const { response } = await withServer(t, '/api/auth/login', {
+    method: 'POST',
+    body: { email: farmer.email, password },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(diagnostic[0], '[auth-login-diagnostic]');
+  assert.deepEqual(JSON.parse(diagnostic[1]), {
+    userFound: true,
+    passwordHashAvailable: true,
+    passwordComparisonSucceeded: true,
+  });
+  assert.equal(diagnostic.join(' ').includes(password), false);
+  assert.equal(diagnostic.join(' ').includes(hash), false);
 });
 
 test('registration and login reject missing or malformed values with 400', async (t) => {

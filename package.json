@@ -2,6 +2,16 @@
   "name": "farmer-query-advisory",
   "version": "1.0.0",
   "private": true,
-  "scripts": {"dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"", "build": "npm run build --prefix client", "test": "npm test --prefix server", "start": "npm start --prefix server"},
-  "devDependencies": {"concurrently": "^9.1.2"}
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "build": "npm run build --prefix client",
+    "test": "npm test --prefix server",
+    "start": "npm start --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "groq-sdk": "^1.6.0"
+  }
 }

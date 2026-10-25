@@ -12,13 +12,13 @@ const farmerId = '64b000000000000000000001';
 const farmer = { _id: farmerId, name: 'Test Farmer', email: 'farmer@example.test', preferredLanguage: 'English', location: 'Test district', role: 'farmer' };
 
 function configureAi(t, apiKey = 'test-provider-key') {
-  const prior = { provider: process.env.AI_PROVIDER, key: process.env.AI_API_KEY, model: process.env.AI_MODEL, timeout: process.env.AI_TIMEOUT_MS, secret: process.env.JWT_SECRET };
+  const prior = { provider: process.env.AI_PROVIDER, key: process.env.AI_API_KEY, model: process.env.AI_MODEL, timeout: process.env.AI_TIMEOUT_MS, ollama: process.env.OLLAMA_BASE_URL, secret: process.env.JWT_SECRET };
   process.env.AI_PROVIDER = 'openai';
   process.env.AI_API_KEY = apiKey;
   process.env.AI_MODEL = 'test-model';
   process.env.JWT_SECRET = secret;
   t.after(() => {
-    for (const [key, value] of Object.entries({ AI_PROVIDER: prior.provider, AI_API_KEY: prior.key, AI_MODEL: prior.model, AI_TIMEOUT_MS: prior.timeout, JWT_SECRET: prior.secret })) {
+    for (const [key, value] of Object.entries({ AI_PROVIDER: prior.provider, AI_API_KEY: prior.key, AI_MODEL: prior.model, AI_TIMEOUT_MS: prior.timeout, OLLAMA_BASE_URL: prior.ollama, JWT_SECRET: prior.secret })) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   });
@@ -50,6 +50,38 @@ test('AI adapter keeps the provider key server-side and returns the provider ans
   assert.equal(request[1].model, 'test-model');
   assert.equal(request[2].headers.Authorization, 'Bearer test-provider-key');
   assert.equal(request[2].timeout, 45_000);
+});
+
+test('Ollama adapter sends non-streaming chat requests and does not require an API key', async (t) => {
+  configureAi(t);
+  process.env.AI_PROVIDER = 'ollama';
+  process.env.AI_MODEL = 'test-local-model';
+  process.env.OLLAMA_BASE_URL = 'http://ollama.test:11434/';
+  delete process.env.AI_API_KEY;
+  let request;
+  t.mock.method(axios, 'post', async (...args) => {
+    request = args;
+    return { data: { message: { role: 'assistant', content: 'Check field drainage.' }, done: true } };
+  });
+  const answer = await getFarmAdvice({ question: 'How can I assess standing water?', cropContext: 'Rice needs locally appropriate water management.' });
+  assert.equal(answer, 'Check field drainage.');
+  assert.equal(request[0], 'http://ollama.test:11434/api/chat');
+  assert.equal(request[1].model, 'test-local-model');
+  assert.equal(request[1].stream, false);
+  assert.match(request[1].messages[0].content, /locally appropriate water management/);
+  assert.equal(request[2].timeout, 45_000);
+});
+
+test('Ollama configuration and provider failures produce safe actionable errors', async (t) => {
+  configureAi(t);
+  process.env.AI_PROVIDER = 'ollama';
+  process.env.AI_MODEL = 'test-local-model';
+  delete process.env.AI_API_KEY;
+  t.mock.method(axios, 'post', async () => { throw Object.assign(new Error('connection details'), { code: 'ECONNREFUSED' }); });
+  await assert.rejects(getFarmAdvice({ question: 'Question' }), { status: 503, message: /Start the local Ollama service/ });
+  t.mock.reset();
+  t.mock.method(axios, 'post', async () => { throw Object.assign(new Error('private model detail'), { response: { status: 404, data: { error: 'private model detail' } } }); });
+  await assert.rejects(getFarmAdvice({ question: 'Question' }), (error) => error.status === 503 && /model is unavailable/.test(error.message) && !/private/.test(error.message));
 });
 
 test('AI adapter uses a valid configured timeout and ignores out-of-range timeout values', async (t) => {
@@ -103,7 +135,14 @@ test('AI adapter rejects whitespace configuration and does not contact the provi
   configureAi(t);
   process.env.AI_API_KEY = '   ';
   t.mock.method(axios, 'post', async () => assert.fail('provider must not be called with a blank key'));
-  await assert.rejects(getFarmAdvice({ question: 'Question' }), { status: 503, message: /AI_PROVIDER=openai, AI_API_KEY, and AI_MODEL/ });
+  await assert.rejects(getFarmAdvice({ question: 'Question' }), { status: 503, message: /AI_PROVIDER to openai, configure the required credentials, and set AI_MODEL/ });
+});
+
+test('AI adapter rejects an unknown provider without contacting an upstream service', async (t) => {
+  configureAi(t);
+  process.env.AI_PROVIDER = 'unknown';
+  t.mock.method(axios, 'post', async () => assert.fail('unsupported provider must not be called'));
+  await assert.rejects(getFarmAdvice({ question: 'Question' }), { status: 503, message: /openai, groq, or ollama/ });
 });
 
 test('AI provider timeouts map to a retryable timeout response', async (t) => {

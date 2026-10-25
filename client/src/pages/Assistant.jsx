@@ -3,6 +3,7 @@ import { Bot, Send, UserRound, Sprout, RotateCcw } from 'lucide-react';
 import api, { errorMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Alert, Button, PageHeading } from '../components/UI';
+import MarkdownContent from '../components/MarkdownContent';
 
 const starters = [
   'What should I consider before fertilizing wheat?',
@@ -45,7 +46,7 @@ export default function Assistant() {
     <section className="assistant-shell" aria-label="Agricultural assistant conversation">
       <div className="chat-topline"><div className="assistant-avatar"><Sprout size={19} /></div><div><strong>Fieldwise assistant</strong><span><i /> Ready when you are</span></div><div className="language-tag">{user?.preferredLanguage || 'English'}</div></div>
       <div className="chat-messages" aria-live="polite" aria-relevant="additions text">
-        {messages.length === 0 ? <div className="chat-welcome"><div className="chat-welcome-mark"><Bot size={27} /></div><h2>What’s happening in your field?</h2><p>Ask a question in your own words. We’ll work through the possibilities together.</p><div className="prompt-list">{starters.map((starter) => <button key={starter} type="button" onClick={() => send(starter)}>{starter}<span aria-hidden="true">↗</span></button>)}</div></div> : messages.map((message, index) => <div key={`${index}-${message.role}`} className={`message-row ${message.role === 'farmer' ? 'message-mine' : ''}`}><div className={`message-avatar ${message.role === 'farmer' ? 'farmer-avatar' : ''}`}>{message.role === 'farmer' ? <UserRound size={16} /> : <Sprout size={17} />}</div><div className="message-content"><span className="message-author">{message.role === 'farmer' ? 'YOU' : 'FIELDWISE ASSISTANT'}</span><div className="message-bubble">{message.text}</div></div></div>)}
+        {messages.length === 0 ? <div className="chat-welcome"><div className="chat-welcome-mark"><Bot size={27} /></div><h2>What’s happening in your field?</h2><p>Ask a question in your own words. We’ll work through the possibilities together.</p><div className="prompt-list">{starters.map((starter) => <button key={starter} type="button" onClick={() => send(starter)}>{starter}<span aria-hidden="true">↗</span></button>)}</div></div> : messages.map((message, index) => <div key={`${index}-${message.role}`} className={`message-row ${message.role === 'farmer' ? 'message-mine' : ''}`}><div className={`message-avatar ${message.role === 'farmer' ? 'farmer-avatar' : ''}`}>{message.role === 'farmer' ? <UserRound size={16} /> : <Sprout size={17} />}</div><div className="message-content"><span className="message-author">{message.role === 'farmer' ? 'YOU' : 'FIELDWISE ASSISTANT'}</span><div className={`message-bubble ${message.role === 'assistant' ? 'assistant-markdown' : ''}`}>{message.role === 'assistant' ? <MarkdownContent>{message.text}</MarkdownContent> : message.text}</div></div></div>)}
         {busy && <div className="message-row" role="status" aria-label="Assistant is preparing a response"><div className="message-avatar"><Sprout size={17} /></div><div className="typing"><i /><i /><i /></div></div>}
         <div ref={bottom} />
       </div>
