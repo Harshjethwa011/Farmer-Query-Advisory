@@ -1,5 +1,6 @@
 
 import { Routes, Route, Navigate } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 
 import { useAuth } from "./context/AuthContext";
 
@@ -29,7 +30,8 @@ import Admin from "./pages/Admin";
 export default function App() {
   const { user } = useAuth();
   return (
-    <Routes>
+    <>
+      <Routes>
       <Route
         path="/"
         element={user ? <Navigate to="/dashboard" replace /> : <Landing />}
@@ -75,6 +77,8 @@ export default function App() {
      
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+      <Analytics />
+    </>
   );
 }
